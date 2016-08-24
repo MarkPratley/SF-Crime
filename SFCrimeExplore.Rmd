@@ -1,0 +1,295 @@
+---
+title: "Exploring SF Crime Data"
+author: "Mark Pratley"
+date: "29 january 2016"
+output: 
+  html_document: 
+    fig_width: 8
+    self_contained: no
+---
+```{r libs, echo=F, message=F, warning=F}
+CACHED = F
+
+library(readr)
+library(dplyr)
+library(knitr)
+library(ggplot2)
+library(ggmap)
+library(scales)
+```
+
+```{r setupdata, echo=F, message=F, cache=T, warning=F}
+path <- "./data/SFPD_Incidents_-_from_1_January_2003.csv"
+
+# Stop str from shouting
+tidy.str <- function(str)
+    return (gsub("\\b([[:upper:]])([[:upper:]]+)", 
+                 "\\U\\1\\L\\2", str, perl=TRUE))
+
+sf.data <- read_csv(path)
+
+# Use proper case on the columns
+sf.data <- sf.data %>% mutate(Category = tidy.str(Category),
+                                Descript = tidy.str(Descript),
+                                PdDistrict = tidy.str(PdDistrict),
+                                Resolution = tidy.str(Resolution)
+                              )
+
+sf.data$Category <- as.factor(sf.data$Category)
+sf.data$Resolution <- as.factor(sf.data$Resolution)
+```
+
+## Intro
+
+I recently stumbled onto the [San Francisco Police Deparatment's Incidents Dataset](https://data.sfgov.org/Public-Safety/SFPD-Incidents-from-1-January-2003/tmnf-yvry), which caught my interest and I decided to investigate further.
+
+[This](https://data.sfgov.org/api/views/tmnf-yvry/rows.csv?accessType=DOWNLOAD) dataset contains records of all the Incidents derived from SFPD Crime Incident Reporting system from 01/01/2003 up until 31/12/2014.
+
+It contains almost 2 million incidents, where each incident has 13 data variables showing the Category, Description, and Resolution of the incident along with Date, Time and Location details.
+
+From these it is possible to explore the data in some detail and also create some geo-data maps of incident locations.
+
+Let's firstly take a look at the main types of information it contains.
+
+## Categories
+
+Category is a broad umbrella term to easily determine the nature of the incident.
+There are `r sf.data %>% select(Category) %>% unique() %>% nrow()` categories with these being the most numerous:
+
+```{r crime-categories, echo=T, message=T, cache=F, warning=F}
+sf.data %>%
+    group_by(Category) %>% 
+    summarise(Num=n()) %>% 
+    arrange(desc(Num)) %>% 
+    head() %>% 
+    kable()
+```
+```{r top-crime-categories, echo=T, message=T, cache=F, warning=F}
+sf.data %>%
+    select(Category) %>% 
+    group_by(Category) %>%
+    summarise(Num=n()) %>% 
+    arrange(desc(Num)) %>% 
+    head(7) %>% 
+    
+    ggplot(aes(x=Category, y=Num)) +
+        geom_bar(stat = "identity", aes(fill=Category)) +
+        theme(axis.text.x=element_blank()) +
+        labs(x="Category",
+             y = "Number",
+             title="Top Incident Categories") +
+        scale_y_continuous(labels = comma)
+```
+
+## Crime Type
+
+The dataset also contains a finer grain summary of each incident; these examples are from taken from the Drug/Narcotic category:
+
+```{r Theft-top-descriptions, echo=T, message=T, cache=F, warning=F}
+sf.data %>% 
+    filter(Category=="Drug/Narcotic") %>% 
+    group_by(Descript) %>% 
+    summarise(Num=n()) %>% 
+    arrange(desc(Num)) %>% 
+    head() %>% 
+    kable()
+```
+
+## Resolution
+
+The outcome of the incident.
+Shown below are most common outcomes in the Weapon Laws category.
+
+```{r weapons-outcomes-top, echo=T, message=T, cache=F, warning=F}
+sf.data %>% 
+    filter(Category=="Weapon Laws") %>% 
+    group_by(Resolution) %>% 
+    summarise(Num=n()) %>% 
+    arrange(desc(Num)) %>% 
+    head() %>% 
+    kable()
+```
+
+## Arrested?
+
+For ease of analysis a new 'Arrested' variable was created which simplifies two arrest resolutions ("Arrest, Booked" and "Arrest, Cited") as 1, and all the other Resolutions as 0.
+
+```{r add-arrested, echo=T, message=T, cache=T, warning=F}
+sf.data <- sf.data %>% 
+            mutate(Arrested=ifelse(grepl("Arrest", Resolution), 1, 0))
+```
+This allows us to easily show the incidents with the highest arrest rate:
+
+```{r arrest-rates-top, echo=T, message=T, cache=F, warning=F}
+sf.data %>% 
+    group_by(Category) %>% 
+    summarise(Num=n(), 
+              Arrested=sum(Arrested), 
+              PercentArrested=round(100*sum(Arrested)/n(), 0)) %>%
+    arrange(desc(PercentArrested)) %>% 
+    head(9) %>% 
+    kable()
+```
+
+And also the incidents with the lowest:
+
+```{r arrest-rates-lowest, echo=T, message=T, cache=F, warning=F}
+sf.data %>% 
+    group_by(Category) %>% 
+    summarise(Num=n(), 
+              Arrested=sum(Arrested), 
+              PercentArrested=round(100*sum(Arrested)/n(), 0)) %>%
+    arrange(desc(PercentArrested)) %>% 
+    tail(9) %>% 
+    kable()
+```
+
+## Highest Arrested Percent Crimes
+
+```{r Highest-Arrested-Percent-Crimes, echo=T, message=T, cache=F, warning=F}
+sf.data %>% 
+    group_by(Category) %>% 
+    summarise(Num=n(), 
+              Arrested=sum(Arrested), 
+              Percent=round(100*sum(Arrested)/n(), 0)) %>%
+    arrange(desc(Percent)) %>% 
+    head(9) %>% 
+    
+    ggplot(aes(x=reorder(Category, -Percent),
+               y=Percent, 
+               fill=reorder(Category, -Percent))) +
+        geom_bar(stat = "identity") +
+    theme(axis.text.x=element_blank(),
+          legend.title=element_blank()) +
+    labs(x="Category",
+         y = "Percent Arrested",
+         title="Percent Arrested per Category of Incident") +
+    ylim(c(0,100))
+```
+
+## Robbery/Theft Data
+
+Having briefly looked at arrest rates, let's move onto crime location.
+
+As a visitor to San Fransisco the crimes that would interest me most (in a can I avoid them kind of way) would probably be robbery and theft.
+
+These appear to grouped under the following descriptions:
+
+```{r p.lt.desc, echo=T, message=T, cache=T, warning=F}
+sf.p.lt <- 
+    sf.data %>% 
+    filter(Category=="Larceny/Theft" &
+            grepl("Person|Pursesnatch|Pickpocket|Credit Card", Descript) |
+           Category=="Robbery" & 
+            !grepl("Bank|Carjacking|Store|Residence|Vehicle|Station|Estab", Descript))
+
+sf.p.lt %>% 
+    group_by(Descript) %>% 
+    summarise(Num=n()) %>% 
+    arrange(desc(Num)) %>% 
+    head(10) %>% 
+    kable()
+```
+
+## Robbery/Theft Incidents Map
+
+```{r big-map, echo=T, message=F, cache=T, warning=F}
+sf.big.box = c(-122.52,37.7,-122.35,37.82)
+big.map <- get_map(location = sf.big.box)
+```
+```{r p.lt-map, echo=T, message=F, cache=F, warning=F}
+ggmap(big.map) +
+    geom_point(data = sf.p.lt, aes(x=X, y=Y), 
+               color = "red", size = 0.6, alpha = 0.3) +
+    labs(title = "Locations of Robbery/Theft Incidents in San Francisco")
+
+```
+
+This map shows that Robbery/Theft occurs all over SF, but gives little indication of which areas are better or worse than others.
+
+## Robbery/Theft Contour Map
+
+Let's look at a contour map and see if there are any hotspots.
+
+```{r p-lt-contour-map, echo=T, message=F, cache=F, warning=F}
+
+# Robbery/Theft Contours
+ggmap(big.map, extent='device', legend="bottomleft") + 
+    stat_density2d(data = sf.p.lt,
+        aes(x = X, y = Y, fill = ..level.., alpha=..level..),
+        size = 0.1, colour="red", n=100, geom = "polygon") +
+    scale_alpha_continuous(range=c(0.6,0.8), guide='none') +
+    scale_fill_gradient('Robbery\nTheft\nDensity')+
+    ggtitle('Robbery/Theft Density in San Francisco')
+```
+
+## A Closer Look
+
+There are some definite hotspots there so we'll zoom in and take a closer look.
+
+```{r map-zoom, echo=T, message=F, cache=T, warning=F}
+# more focussed map for larceny centre
+zoom.centre = c(-122.41, 37.79)
+zoom.map <- get_map(location=zoom.centre, zoom = 14)
+```
+```{r p-lt-contour-map-zoom, echo=T, message=F, cache=F, warning=F}
+# Robbery/Theft Contours
+ggmap(zoom.map, extent='device', legend="topleft") + 
+    stat_density2d(data = sf.p.lt,
+                   aes(x = X, y = Y, fill = ..level.., alpha=..level..),
+                   size = 0.1, colour="red", n=100,
+                   geom = "polygon") +
+    scale_alpha_continuous(range=c(0.2,0.4), guide='none') +
+    scale_fill_gradient('Robbery\nTheft\nDensity')+
+    ggtitle('Robbery/Theft Density in San Francisco')
+```
+
+# Central District
+
+An even closer look at the central district
+
+```{r big-map-zoom, echo=T, message=F, cache=T, warning=F}
+# more focussed map for larceny centre
+big.zoom.centre = c(-122.409, 37.786)
+big.zoom.map <- get_map(location=zoom.centre, zoom = 15)
+```
+```{r p-lt-contour-map-big-zoom, echo=T, message=F, cache=F, warning=F}
+# Robbery/Theft Contours
+ggmap(big.zoom.map, extent='device', legend="topleft") + 
+    stat_density2d(data = sf.p.lt,
+                   aes(x = X, y = Y, fill = ..level.., alpha=..level..),
+                   size = 0.1, colour="red", n=200, geom = "polygon") +
+    scale_alpha_continuous(range=c(0.05, 0.1), guide='none') +
+    scale_fill_gradient('Robbery\nTheft\nDensity')+
+    ggtitle('Robbery/Theft Density in San Francisco')
+```
+
+From the map it's clear that there are areas with elevated levels of robbery/theft, and with the shading mostly removed its possible to see that one of the strongest centres is the area area around Powel St Station.
+
+# Robbery vs Theft Contours
+
+Obviously no-one wants to be a victim of larceny/theft, but robbery (with violence or threat) is likely to be worse - do these two sets of crimes happen in different places?
+
+Larceny contours are in blue, Robbery contours in red.
+
+```{r rt-lt-contour-map-zoom, echo=T, message=F, cache=F, warning=F}
+# Larceny - Blue
+# Robbery - Red
+ggmap(big.zoom.map, extent='device') + 
+    stat_density2d(data = sf.p.lt %>% filter(Category=="Larceny/Theft"),
+                   aes(x = X, y = Y, fill = ..level.., alpha=..level..),
+                   colour="blue", n=200, geom = "polygon", bins=7) +
+    stat_density2d(data = sf.p.lt %>% filter(Category=="Robbery"),
+                   aes(x = X, y = Y, fill = ..level.., alpha=..level..),
+                   colour="red", n=200, geom = "polygon", bins=7) +
+    scale_alpha_continuous(range=c(0.0,0.1), guide='none') +    
+    scale_fill_gradient('Robbery\nTheft\nDensities') +
+    ggtitle('Robbery/Theft Contours in San Francisco') +
+    theme(legend.position = "none")
+```
+
+<br>From the overlapping contours it seems that these two categories of crimes happen in broadly the same areas with only minor differences.
+<br>
+<br>
+
+

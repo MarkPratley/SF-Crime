@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Mark Pratley" />
+
+<meta name="date" content="2016-01-29" />
+
+<title>Exploring SF Crime Data</title>
+
+<script src="SFCrimeExplore_files/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="SFCrimeExplore_files/bootstrap-3.3.1/css/bootstrap.min.css" rel="stylesheet" />
+<script src="SFCrimeExplore_files/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="SFCrimeExplore_files/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="SFCrimeExplore_files/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="SFCrimeExplore_files/highlight/default.css"
+      type="text/css" />
+<script src="SFCrimeExplore_files/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div id="header">
+<h1 class="title">Exploring SF Crime Data</h1>
+<h4 class="author"><em>Mark Pratley</em></h4>
+<h4 class="date"><em>29 january 2016</em></h4>
+</div>
+
+
+<div id="intro" class="section level2">
+<h2>Intro</h2>
+<p>I recently stumbled onto the <a href="https://data.sfgov.org/Public-Safety/SFPD-Incidents-from-1-January-2003/tmnf-yvry">San Francisco Police Deparatment’s Incidents Dataset</a>, which caught my interest and I decided to investigate further.</p>
+<p><a href="https://data.sfgov.org/api/views/tmnf-yvry/rows.csv?accessType=DOWNLOAD">This</a> dataset contains records of all the Incidents derived from SFPD Crime Incident Reporting system from 01/01/2003 up until 31/12/2014.</p>
+<p>It contains almost 2 million incidents, where each incident has 13 data variables showing the Category, Description, and Resolution of the incident along with Date, Time and Location details.</p>
+<p>From these it is possible to explore the data in some detail and also create some geo-data maps of incident locations.</p>
+<p>Let’s firstly take a look at the main types of information it contains.</p>
+</div>
+<div id="categories" class="section level2">
+<h2>Categories</h2>
+<p>Category is a broad umbrella term to easily determine the nature of the incident. There are 39 categories with these being the most numerous:</p>
+<pre class="r"><code>sf.data %&gt;%
+    group_by(Category) %&gt;% 
+    summarise(Num=n()) %&gt;% 
+    arrange(desc(Num)) %&gt;% 
+    head() %&gt;% 
+    kable()</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left">Category</th>
+<th align="right">Num</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Larceny/Theft</td>
+<td align="right">374680</td>
+</tr>
+<tr class="even">
+<td align="left">Other Offenses</td>
+<td align="right">263432</td>
+</tr>
+<tr class="odd">
+<td align="left">Non-Criminal</td>
+<td align="right">195806</td>
+</tr>
+<tr class="even">
+<td align="left">Assault</td>
+<td align="right">161609</td>
+</tr>
+<tr class="odd">
+<td align="left">Vehicle Theft</td>
+<td align="right">112148</td>
+</tr>
+<tr class="even">
+<td align="left">Drug/Narcotic</td>
+<td align="right">110181</td>
+</tr>
+</tbody>
+</table>
+<pre class="r"><code>sf.data %&gt;%
+    select(Category) %&gt;% 
+    group_by(Category) %&gt;%
+    summarise(Num=n()) %&gt;% 
+    arrange(desc(Num)) %&gt;% 
+    head(7) %&gt;% 
+    
+    ggplot(aes(x=Category, y=Num)) +
+        geom_bar(stat = &quot;identity&quot;, aes(fill=Category)) +
+        theme(axis.text.x=element_blank()) +
+        labs(x=&quot;Category&quot;,
+             y = &quot;Number&quot;,
+             title=&quot;Top Incident Categories&quot;) +
+        scale_y_continuous(labels = comma)</code></pre>
+<p><img src="SFCrimeExplore_files/figure-html/top-crime-categories-1.png" title="" alt="" width="768" /></p>
+</div>
+<div id="crime-type" class="section level2">
+<h2>Crime Type</h2>
+<p>The dataset also contains a finer grain summary of each incident; these examples are from taken from the Drug/Narcotic category:</p>
+<pre class="r"><code>sf.data %&gt;% 
+    filter(Category==&quot;Drug/Narcotic&quot;) %&gt;% 
+    group_by(Descript) %&gt;% 
+    summarise(Num=n()) %&gt;% 
+    arrange(desc(Num)) %&gt;% 
+    head() %&gt;% 
+    kable()</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left">Descript</th>
+<th align="right">Num</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Possession Of Narcotics Paraphernalia</td>
+<td align="right">20486</td>
+</tr>
+<tr class="even">
+<td align="left">Possession Of Base/Rock Cocaine</td>
+<td align="right">14109</td>
+</tr>
+<tr class="odd">
+<td align="left">Possession Of Marijuana</td>
+<td align="right">11228</td>
+</tr>
+<tr class="even">
+<td align="left">Sale Of Base/Rock Cocaine</td>
+<td align="right">8805</td>
+</tr>
+<tr class="odd">
+<td align="left">Possession Of Meth-Amphetamine</td>
+<td align="right">7551</td>
+</tr>
+<tr class="even">
+<td align="left">Possession Of Base/Rock Cocaine For Sale</td>
+<td align="right">7364</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="resolution" class="section level2">
+<h2>Resolution</h2>
+<p>The outcome of the incident. Shown below are most common outcomes in the Weapon Laws category.</p>
+<pre class="r"><code>sf.data %&gt;% 
+    filter(Category==&quot;Weapon Laws&quot;) %&gt;% 
+    group_by(Resolution) %&gt;% 
+    summarise(Num=n()) %&gt;% 
+    arrange(desc(Num)) %&gt;% 
+    head() %&gt;% 
+    kable()</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left">Resolution</th>
+<th align="right">Num</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Arrest, Booked</td>
+<td align="right">10554</td>
+</tr>
+<tr class="even">
+<td align="left">None</td>
+<td align="right">4874</td>
+</tr>
+<tr class="odd">
+<td align="left">Arrest, Cited</td>
+<td align="right">1156</td>
+</tr>
+<tr class="even">
+<td align="left">Juvenile Booked</td>
+<td align="right">636</td>
+</tr>
+<tr class="odd">
+<td align="left">Juvenile Cited</td>
+<td align="right">262</td>
+</tr>
+<tr class="even">
+<td align="left">Juvenile Admonished</td>
+<td align="right">191</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="arrested" class="section level2">
+<h2>Arrested?</h2>
+<p>For ease of analysis a new ‘Arrested’ variable was created which simplifies two arrest resolutions (“Arrest, Booked” and “Arrest, Cited”) as 1, and all the other Resolutions as 0.</p>
+<pre class="r"><code>sf.data &lt;- sf.data %&gt;% 
+            mutate(Arrested=ifelse(grepl(&quot;Arrest&quot;, Resolution), 1, 0))</code></pre>
+<p>This allows us to easily show the incidents with the highest arrest rate:</p>
+<pre class="r"><code>sf.data %&gt;% 
+    group_by(Category) %&gt;% 
+    summarise(Num=n(), 
+              Arrested=sum(Arrested), 
+              PercentArrested=round(100*sum(Arrested)/n(), 0)) %&gt;%
+    arrange(desc(PercentArrested)) %&gt;% 
+    head(9) %&gt;% 
+    kable()</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left">Category</th>
+<th align="right">Num</th>
+<th align="right">Arrested</th>
+<th align="right">PercentArrested</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Driving Under The Influence</td>
+<td align="right">4867</td>
+<td align="right">4558</td>
+<td align="right">94</td>
+</tr>
+<tr class="even">
+<td align="left">Prostitution</td>
+<td align="right">15429</td>
+<td align="right">14434</td>
+<td align="right">94</td>
+</tr>
+<tr class="odd">
+<td align="left">Warrants</td>
+<td align="right">87945</td>
+<td align="right">81579</td>
+<td align="right">93</td>
+</tr>
+<tr class="even">
+<td align="left">Drug/Narcotic</td>
+<td align="right">110181</td>
+<td align="right">98538</td>
+<td align="right">89</td>
+</tr>
+<tr class="odd">
+<td align="left">Loitering</td>
+<td align="right">2340</td>
+<td align="right">2040</td>
+<td align="right">87</td>
+</tr>
+<tr class="even">
+<td align="left">Liquor Laws</td>
+<td align="right">3821</td>
+<td align="right">3221</td>
+<td align="right">84</td>
+</tr>
+<tr class="odd">
+<td align="left">Stolen Property</td>
+<td align="right">9825</td>
+<td align="right">8060</td>
+<td align="right">82</td>
+</tr>
+<tr class="even">
+<td align="left">Drunkenness</td>
+<td align="right">8882</td>
+<td align="right">7212</td>
+<td align="right">81</td>
+</tr>
+<tr class="odd">
+<td align="left">Other Offenses</td>
+<td align="right">263432</td>
+<td align="right">183513</td>
+<td align="right">70</td>
+</tr>
+</tbody>
+</table>
+<p>And also the incidents with the lowest:</p>
+<pre class="r"><code>sf.data %&gt;% 
+    group_by(Category) %&gt;% 
+    summarise(Num=n(), 
+              Arrested=sum(Arrested), 
+              PercentArrested=round(100*sum(Arrested)/n(), 0)) %&gt;%
+    arrange(desc(PercentArrested)) %&gt;% 
+    tail(9) %&gt;% 
+    kable()</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left">Category</th>
+<th align="right">Num</th>
+<th align="right">Arrested</th>
+<th align="right">PercentArrested</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Larceny/Theft</td>
+<td align="right">374680</td>
+<td align="right">31419</td>
+<td align="right">8</td>
+</tr>
+<tr class="even">
+<td align="left">Recovered Vehicle</td>
+<td align="right">6346</td>
+<td align="right">395</td>
+<td align="right">6</td>
+</tr>
+<tr class="odd">
+<td align="left">Bad Checks</td>
+<td align="right">849</td>
+<td align="right">45</td>
+<td align="right">5</td>
+</tr>
+<tr class="even">
+<td align="left">Non-Criminal</td>
+<td align="right">195806</td>
+<td align="right">10082</td>
+<td align="right">5</td>
+</tr>
+<tr class="odd">
+<td align="left">Suspicious Occ</td>
+<td align="right">66176</td>
+<td align="right">2926</td>
+<td align="right">4</td>
+</tr>
+<tr class="even">
+<td align="left">Vehicle Theft</td>
+<td align="right">112148</td>
+<td align="right">4381</td>
+<td align="right">4</td>
+</tr>
+<tr class="odd">
+<td align="left">Suicide</td>
+<td align="right">1108</td>
+<td align="right">32</td>
+<td align="right">3</td>
+</tr>
+<tr class="even">
+<td align="left">Missing Person</td>
+<td align="right">54344</td>
+<td align="right">1224</td>
+<td align="right">2</td>
+</tr>
+<tr class="odd">
+<td align="left">Runaway</td>
+<td align="right">3957</td>
+<td align="right">17</td>
+<td align="right">0</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="highest-arrested-percent-crimes" class="section level2">
+<h2>Highest Arrested Percent Crimes</h2>
+<pre class="r"><code>sf.data %&gt;% 
+    group_by(Category) %&gt;% 
+    summarise(Num=n(), 
+              Arrested=sum(Arrested), 
+              Percent=round(100*sum(Arrested)/n(), 0)) %&gt;%
+    arrange(desc(Percent)) %&gt;% 
+    head(9) %&gt;% 
+    
+    ggplot(aes(x=reorder(Category, -Percent),
+               y=Percent, 
+               fill=reorder(Category, -Percent))) +
+        geom_bar(stat = &quot;identity&quot;) +
+    theme(axis.text.x=element_blank(),
+          legend.title=element_blank()) +
+    labs(x=&quot;Category&quot;,
+         y = &quot;Percent Arrested&quot;,
+         title=&quot;Percent Arrested per Category of Incident&quot;) +
+    ylim(c(0,100))</code></pre>
+<p><img src="SFCrimeExplore_files/figure-html/Highest-Arrested-Percent-Crimes-1.png" title="" alt="" width="768" /></p>
+</div>
+<div id="robberytheft-data" class="section level2">
+<h2>Robbery/Theft Data</h2>
+<p>Having briefly looked at arrest rates, let’s move onto crime location.</p>
+<p>As a visitor to San Fransisco the crimes that would interest me most (in a can I avoid them kind of way) would probably be robbery and theft.</p>
+<p>These appear to grouped under the following descriptions:</p>
+<pre class="r"><code>sf.p.lt &lt;- 
+    sf.data %&gt;% 
+    filter(Category==&quot;Larceny/Theft&quot; &amp;
+            grepl(&quot;Person|Pursesnatch|Pickpocket|Credit Card&quot;, Descript) |
+           Category==&quot;Robbery&quot; &amp; 
+            !grepl(&quot;Bank|Carjacking|Store|Residence|Vehicle|Station|Estab&quot;, Descript))
+
+sf.p.lt %&gt;% 
+    group_by(Descript) %&gt;% 
+    summarise(Num=n()) %&gt;% 
+    arrange(desc(Num)) %&gt;% 
+    head(10) %&gt;% 
+    kable()</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left">Descript</th>
+<th align="right">Num</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Grand Theft From Person</td>
+<td align="right">14799</td>
+</tr>
+<tr class="even">
+<td align="left">Robbery On The Street, Strongarm</td>
+<td align="right">13837</td>
+</tr>
+<tr class="odd">
+<td align="left">Grand Theft Pickpocket</td>
+<td align="right">11728</td>
+</tr>
+<tr class="even">
+<td align="left">Robbery, Bodily Force</td>
+<td align="right">9407</td>
+</tr>
+<tr class="odd">
+<td align="left">Robbery On The Street With A Gun</td>
+<td align="right">4278</td>
+</tr>
+<tr class="even">
+<td align="left">Attempted Robbery On The Street With Bodily Force</td>
+<td align="right">2349</td>
+</tr>
+<tr class="odd">
+<td align="left">Robbery, Armed With A Gun</td>
+<td align="right">2292</td>
+</tr>
+<tr class="even">
+<td align="left">Attempted Robbery With Bodily Force</td>
+<td align="right">1610</td>
+</tr>
+<tr class="odd">
+<td align="left">Robbery On The Street With A Knife</td>
+<td align="right">1535</td>
+</tr>
+<tr class="even">
+<td align="left">Grand Theft Pursesnatch</td>
+<td align="right">1487</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="robberytheft-incidents-map" class="section level2">
+<h2>Robbery/Theft Incidents Map</h2>
+<pre class="r"><code>sf.big.box = c(-122.52,37.7,-122.35,37.82)
+big.map &lt;- get_map(location = sf.big.box)</code></pre>
+<pre class="r"><code>ggmap(big.map) +
+    geom_point(data = sf.p.lt, aes(x=X, y=Y), 
+               color = &quot;red&quot;, size = 0.6, alpha = 0.3) +
+    labs(title = &quot;Locations of Robbery/Theft Incidents in San Francisco&quot;)</code></pre>
+<p><img src="SFCrimeExplore_files/figure-html/p.lt-map-1.png" title="" alt="" width="768" /></p>
+<p>This map shows that Robbery/Theft occurs all over SF, but gives little indication of which areas are better or worse than others.</p>
+</div>
+<div id="robberytheft-contour-map" class="section level2">
+<h2>Robbery/Theft Contour Map</h2>
+<p>Let’s look at a contour map and see if there are any hotspots.</p>
+<pre class="r"><code># Robbery/Theft Contours
+ggmap(big.map, extent=&#39;device&#39;, legend=&quot;bottomright&quot;) + 
+    stat_density2d(data = sf.p.lt,
+        aes(x = X, y = Y, fill = ..level.., alpha=..level..),
+        size = 0.1, colour=&quot;red&quot;, n=100, geom = &quot;polygon&quot;) +
+    scale_alpha_continuous(range=c(0.6,0.8), guide=&#39;none&#39;) +
+    scale_fill_gradient(&#39;Robbery\nTheft\nDensity&#39;)+
+    ggtitle(&#39;Robbery/Theft Density in San Francisco&#39;)</code></pre>
+<p><img src="SFCrimeExplore_files/figure-html/p-lt-contour-map-1.png" title="" alt="" width="768" /></p>
+</div>
+<div id="a-closer-look" class="section level2">
+<h2>A Closer Look</h2>
+<p>There are some definite hotspots there so we’ll zoom in and take a closer look.</p>
+<pre class="r"><code># more focussed map for larceny centre
+zoom.centre = c(-122.41, 37.79)
+zoom.map &lt;- get_map(location=zoom.centre, zoom = 14)</code></pre>
+<pre class="r"><code># Robbery/Theft Contours
+ggmap(zoom.map, extent=&#39;device&#39;, legend=&quot;topleft&quot;) + 
+    stat_density2d(data = sf.p.lt,
+                   aes(x = X, y = Y, fill = ..level.., alpha=..level..),
+                   size = 0.1, colour=&quot;red&quot;, n=100,
+                   geom = &quot;polygon&quot;) +
+    scale_alpha_continuous(range=c(0.2,0.4), guide=&#39;none&#39;) +
+    scale_fill_gradient(&#39;Robbery\nTheft\nDensity&#39;)+
+    ggtitle(&#39;Robbery/Theft Density in San Francisco&#39;)</code></pre>
+<p><img src="SFCrimeExplore_files/figure-html/p-lt-contour-map-zoom-1.png" title="" alt="" width="768" /></p>
+</div>
+<div id="central-district" class="section level1">
+<h1>Central District</h1>
+<p>An even closer look at the central district</p>
+<pre class="r"><code># more focussed map for larceny centre
+big.zoom.centre = c(-122.409, 37.786)
+big.zoom.map &lt;- get_map(location=zoom.centre, zoom = 15)</code></pre>
+<pre class="r"><code># Robbery/Theft Contours
+ggmap(big.zoom.map, extent=&#39;device&#39;, legend=&quot;topleft&quot;) + 
+    stat_density2d(data = sf.p.lt,
+                   aes(x = X, y = Y, fill = ..level.., alpha=..level..),
+                   size = 0.1, colour=&quot;red&quot;, n=200, geom = &quot;polygon&quot;) +
+    scale_alpha_continuous(range=c(0.05, 0.1), guide=&#39;none&#39;) +
+    scale_fill_gradient(&#39;Robbery\nTheft\nDensity&#39;)+
+    ggtitle(&#39;Robbery/Theft Density in San Francisco&#39;)</code></pre>
+<p><img src="SFCrimeExplore_files/figure-html/p-lt-contour-map-big-zoom-1.png" title="" alt="" width="768" /></p>
+<p>From the map it’s clear that there are areas with elevated levels of robbery/theft, and with the shading mostly removed its possible to see that one of the strongest centres is the area area around Powel St Station.</p>
+</div>
+<div id="robbery-vs-theft-contours" class="section level1">
+<h1>Robbery vs Theft Contours</h1>
+<p>Obviously no-one wants to be a victim of larceny/theft, but robbery (with violence or threat) is likely to be worse - do these two sets of crimes happen in different places?</p>
+<p>Larceny contours are in blue, Robbery contours in red.</p>
+<pre class="r"><code># Larceny - Blue
+# Robbery - Red
+ggmap(big.zoom.map, extent=&#39;device&#39;) + 
+    stat_density2d(data = sf.p.lt %&gt;% filter(Category==&quot;Larceny/Theft&quot;),
+                   aes(x = X, y = Y, fill = ..level.., alpha=..level..),
+                   colour=&quot;blue&quot;, n=200, geom = &quot;polygon&quot;, bins=7) +
+    stat_density2d(data = sf.p.lt %&gt;% filter(Category==&quot;Robbery&quot;),
+                   aes(x = X, y = Y, fill = ..level.., alpha=..level..),
+                   colour=&quot;red&quot;, n=200, geom = &quot;polygon&quot;, bins=7) +
+    scale_alpha_continuous(range=c(0.0,0.1), guide=&#39;none&#39;) +    
+    scale_fill_gradient(&#39;Robbery\nTheft\nDensities&#39;) +
+    ggtitle(&#39;Robbery/Theft Contours in San Francisco&#39;) +
+    theme(legend.position = &quot;none&quot;)</code></pre>
+<p><img src="SFCrimeExplore_files/figure-html/rt-lt-contour-map-zoom-1.png" title="" alt="" width="768" /></p>
+<p><br>From the overlapping contours it seems that these two categories of crimes happen in broadly the same areas with only minor differences. <br> <br></p>
+</div>
+
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
